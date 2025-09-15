@@ -1,8 +1,9 @@
-streamlit
+pypandoc
+docx2txt
+PyMuPDF
+mammoth
 pandas
 numpy
 scikit-learn
-docx2txt
-PyMuPDF
 nltk
-textract==1.6.6
+streamlit
