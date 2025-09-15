@@ -2,7 +2,6 @@ streamlit
 pymupdf
 python-docx
 docx2txt
-pywin32
 scikit-learn
 pandas
 numpy
