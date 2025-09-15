@@ -2,8 +2,7 @@ streamlit
 pandas
 numpy
 scikit-learn
-python-docx
 docx2txt
-pymupdf
+PyMuPDF
 nltk
-mammoth
+textract==1.6.6

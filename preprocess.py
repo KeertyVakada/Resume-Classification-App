@@ -3,9 +3,9 @@ import os
 import re
 import fitz  # PyMuPDF
 import docx2txt
-import mammoth
+import textract
 import pandas as pd
-from typing import List, Tuple, Optional
+from typing import Optional
 
 # ---- Helper utilities ----
 def _clean_text(s: str) -> str:
@@ -17,89 +17,45 @@ def _clean_text(s: str) -> str:
     return s.strip()
 
 # ---- Extractors ----
-def extract_text_from_pdf(path: str) -> str:
-    text = ""
-    try:
-        doc = fitz.open(path)
-        pages = []
-        for p in doc:
-            try:
-                pages.append(p.get_text("text") or "")
-            except Exception:
-                pages.append("")
-        text = " ".join(pages)
-    except Exception as e:
-        print(f"PDF extraction failed for {path}: {e}")
-    return _clean_text(text)
-
-def extract_text_from_docx(path: str) -> str:
-    try:
-        text = docx2txt.process(path) or ""
-    except Exception as e:
-        print(f"DOCX extraction failed for {path}: {e}")
-        text = ""
-    return _clean_text(text)
-
-def extract_text_from_doc(path: str) -> str:
+def extract_text_from_doc(file_path: str) -> str:
     """
-    Extract text from legacy .doc using Word COM.
-    This initializes COM in the current thread and uninitializes afterwards.
+    Extract text from legacy .doc files using textract.
+    Returns empty string if extraction fails.
     """
-    text = ""
     try:
-        pythoncom.CoInitialize()
-        word = win32com.client.Dispatch("Word.Application")
-        word.Visible = False
-        doc = word.Documents.Open(path)
-        text = doc.Content.Text or ""
-        doc.Close(False)
-        word.Quit()
+        text_bytes = textract.process(file_path)
+        return text_bytes.decode("utf-8", errors="ignore")
     except Exception as e:
-        print(f"DOC extraction failed for {path}: {e}")
-        text = ""
-    finally:
-        try:
-            pythoncom.CoUninitialize()
-        except Exception:
-            pass
-    return _clean_text(text)
+        print(f"Failed to extract .doc text: {e}")
+        return ""
 
-import docx2txt
-import fitz  # PyMuPDF
-import mammoth
-
-def extract_text(file_path):
+def extract_text(file_path: str) -> str:
     """
     Extract text from PDF, DOCX, DOC, or TXT files
     """
-    if file_path.endswith(".pdf"):
-        doc = fitz.open(file_path)
-        text = ""
-        for page in doc:
-            text += page.get_text()
-        return text
+    try:
+        if file_path.endswith(".pdf"):
+            doc = fitz.open(file_path)
+            return "".join(page.get_text() for page in doc)
 
-    elif file_path.endswith(".docx"):
-        return docx2txt.process(file_path)
+        elif file_path.endswith(".docx"):
+            return docx2txt.process(file_path)
 
-    elif file_path.endswith(".doc"):
-        try:
-            return extract_doc_text(file_path)
-        except Exception as e:
+        elif file_path.endswith(".doc"):
+            return extract_text_from_doc(file_path)
+
+        elif file_path.endswith(".txt"):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    return f.read()
+            except UnicodeDecodeError:
+                with open(file_path, "r", encoding="latin-1") as f:
+                    return f.read()
+        else:
             return ""
-
-    elif file_path.endswith(".txt"):
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                return f.read()
-        except UnicodeDecodeError:
-            with open(file_path, "r", encoding="latin-1") as f:
-                return f.read()
-    else:
+    except Exception as e:
+        print(f"Error extracting text from {file_path}: {e}")
         return ""
-
-
-
 
 # ---- Mapping & Profile derivation ----
 FOLDER_CATEGORY_MAP = {
@@ -109,7 +65,6 @@ FOLDER_CATEGORY_MAP = {
 }
 
 PREFIX_PROFILE_MAP = {
-    # common filename prefixes -> normalized profile
     "react dev": "UI Developer (React JS)",
     "react developer": "UI Developer (React JS)",
     "react js developer": "UI Developer (React JS)",
@@ -120,7 +75,7 @@ PREFIX_PROFILE_MAP = {
     "peoplesoft finance": "PeopleSoft Finance Specialist",
     "peoplesoft fscm": "PeopleSoft FSCM Consultant",
     "workday": "Workday Specialist",
-    "sql developer": "Database / SQL Developer",
+    "sql developer": "Database Developer (SQL Developer)",
     "sql":  "SQL Developer",
     "internship": "Software Intern",
     "intern": "Software Intern"
@@ -132,7 +87,6 @@ def _match_prefix_to_profile(prefix: str) -> Optional[str]:
     p = re.sub(r"\s+", " ", p).strip()
     if not p:
         return None
-    # try exact keys, then substring match
     if p in PREFIX_PROFILE_MAP:
         return PREFIX_PROFILE_MAP[p]
     for key, val in PREFIX_PROFILE_MAP.items():
@@ -142,54 +96,45 @@ def _match_prefix_to_profile(prefix: str) -> Optional[str]:
 
 def derive_profile(file_name: str, folder_name: str, extracted_text: str) -> str:
     """
-    Determine the detailed profile (job role) using:
-     1) folder name if it is a specific role folder,
-     2) filename prefix (before underscore or hyphen),
-     3) simple keyword checks inside the resume text.
+    Determine the detailed profile (job role) using folder name, file prefix, or text keywords.
     """
-    # 1) folder-based
+    # 1) Folder-based
     folder_normal = (folder_name or "").strip()
     if folder_normal:
         folder_key = folder_normal.lower()
-        # if folder is mapped to a known category, prefer that mapping
         if folder_key in FOLDER_CATEGORY_MAP:
             cat = FOLDER_CATEGORY_MAP[folder_key]
-            # map category to a sensible profile
+            fname = file_name.lower()
+            t = extracted_text.lower() if extracted_text else ""
             if cat == "PeopleSoft":
-                # further inspection on filename/text to specify admin/fscm/finance...
-                fname = file_name.lower()
-                if "admin" in fname or "admin" in extracted_text.lower():
+                if "admin" in fname or "admin" in t:
                     return "PeopleSoft Administrator"
-                if "fscm" in fname or "fscm" in extracted_text.lower():
+                if "fscm" in fname or "fscm" in t:
                     return "PeopleSoft FSCM Consultant"
-                if "finance" in fname or "finance" in extracted_text.lower():
+                if "finance" in fname or "finance" in t:
                     return "PeopleSoft Finance Specialist"
-                if "bda" in fname or "business data" in extracted_text.lower():
+                if "bda" in fname or "business data" in t:
                     return "PeopleSoft Business Data Analyst"
                 return "PeopleSoft Technical/Functional Consultant"
             elif cat == "Workday":
                 return "Workday Specialist"
             elif cat == "SQL Developer":
-                return "Database Developer / SQL Developer"
+                return "Database Developer (SQL Developer)"
             else:
-                # if folder maps to other string, use it
                 return cat
-
-        # If folder name itself looks like a role (not generic "Resumes"), use it
-        if folder_key and folder_key not in ("resumes", "resume", ".", ""):
-            # normalize common patterns: remove extension-like bits
+        if folder_key not in ("resumes", "resume", ".", ""):
             return folder_normal
 
-    # 2) filename prefix (e.g., "React Dev_Krishna...")
+    # 2) Filename prefix
     name_root = os.path.splitext(file_name)[0]
     prefix = name_root.split("_")[0] if "_" in name_root else name_root.split("-")[0]
     maybe = _match_prefix_to_profile(prefix)
     if maybe:
         return maybe
 
-    # 3) keyword-based from text (fallback)
+    # 3) Keyword-based from text
     t = (extracted_text or "").lower()
-    if "react" in t and ("ui" in t or "frontend" in t or "front end" in t or "javascript" in t):
+    if "react" in t and any(k in t for k in ("ui", "frontend", "front end", "javascript")):
         return "UI Developer (React JS)"
     if "peoplesoft" in t:
         if "admin" in t:
@@ -202,25 +147,22 @@ def derive_profile(file_name: str, folder_name: str, extracted_text: str) -> str
     if "workday" in t or "hcm" in t:
         return "Workday Specialist"
     if any(k in t for k in ("sql", "pl/sql", "oracle", "mysql", "postgresql", "database")):
-        return "Database Developer / SQL Developer"
+        return "Database Developer (SQL Developer)"
     if any(k in t for k in ("intern", "internship")):
         return "Software Intern"
 
-    # Final fallback
     return "Other"
 
 # ---- Main preprocess function ----
 def preprocess_data(main_path: str) -> pd.DataFrame:
     """
-    Walks `main_path` recursively, extracts text from known resume files,
-    and returns a DataFrame with columns: Folder, File, Type, Path, Text, Category, Profile
+    Walks `main_path` recursively, extracts text from resumes, and returns a DataFrame.
     """
     rows = []
     for root, _, files in os.walk(main_path):
         for fname in files:
             path = os.path.join(root, fname)
             ext = os.path.splitext(fname)[1].lower()
-            # Extract text (safe; extract_text handles exceptions)
             text = extract_text(path)
             folder_basename = os.path.basename(root) or ""
             rows.append({
@@ -236,10 +178,7 @@ def preprocess_data(main_path: str) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # Category mapping (main category)
     df["Category"] = df["Folder"].apply(lambda x: FOLDER_CATEGORY_MAP.get(x.lower(), "React JS Developer"))
-
-    # Profile (detailed job role)
     df["Profile"] = df.apply(lambda r: derive_profile(r["File"], r["Folder"], r["Text"]), axis=1)
 
     return df
