@@ -1,7 +1,8 @@
 streamlit
-pymupdf
-python-docx
-docx2txt
-scikit-learn
 pandas
 numpy
+scikit-learn
+python-docx
+docx2txt
+pymupdf
+nltk

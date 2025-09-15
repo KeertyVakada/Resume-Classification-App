@@ -65,28 +65,25 @@ def extract_text_from_doc(path: str) -> str:
             pass
     return _clean_text(text)
 
-def extract_text(file_path: str) -> str:
-    ext = os.path.splitext(file_path)[1].lower()
-    if ext == ".pdf":
-        return extract_text_from_pdf(file_path)
-    elif ext == ".docx":
-        return extract_text_from_docx(file_path)
-    elif ext == ".doc":
-        return extract_text_from_doc(file_path)
-    elif ext == ".txt":
-        try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                return _clean_text(f.read())
-        except Exception as e:
-            print(f"TXT read failed for {file_path}: {e}")
-            return ""
+# preprocess.py
+import docx2txt
+import fitz  # PyMuPDF
+
+def extract_text(file_path):
+    if file_path.endswith(".pdf"):
+        doc = fitz.open(file_path)
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        return text
+    elif file_path.endswith(".docx"):
+        text = docx2txt.process(file_path)
+        return text
     else:
-        # unknown -> try to read as text file
-        try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                return _clean_text(f.read())
-        except Exception:
-            return ""
+        # txt or other formats
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+
 
 # ---- Mapping & Profile derivation ----
 FOLDER_CATEGORY_MAP = {
