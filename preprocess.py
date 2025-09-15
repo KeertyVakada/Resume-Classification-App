@@ -3,6 +3,7 @@ import os
 import re
 import fitz  # PyMuPDF
 import docx2txt
+import mammoth
 import pandas as pd
 from typing import List, Tuple, Optional
 
@@ -65,10 +66,11 @@ def extract_text_from_doc(path: str) -> str:
 
 import docx2txt
 import fitz  # PyMuPDF
+import mammoth
 
 def extract_text(file_path):
     """
-    Extract text from PDF, DOCX, or TXT files
+    Extract text from PDF, DOCX, DOC, or TXT files
     """
     if file_path.endswith(".pdf"):
         doc = fitz.open(file_path)
@@ -76,8 +78,16 @@ def extract_text(file_path):
         for page in doc:
             text += page.get_text()
         return text
+
     elif file_path.endswith(".docx"):
         return docx2txt.process(file_path)
+
+    elif file_path.endswith(".doc"):
+        try:
+            return extract_doc_text(file_path)
+        except Exception as e:
+            return ""
+
     elif file_path.endswith(".txt"):
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -87,6 +97,7 @@ def extract_text(file_path):
                 return f.read()
     else:
         return ""
+
 
 
 
