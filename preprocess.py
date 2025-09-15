@@ -3,7 +3,6 @@ import os
 import re
 import fitz  # PyMuPDF
 import docx2txt
-import pythoncom
 import pandas as pd
 from typing import List, Tuple, Optional
 
