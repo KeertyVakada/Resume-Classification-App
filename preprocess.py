@@ -63,11 +63,13 @@ def extract_text_from_doc(path: str) -> str:
             pass
     return _clean_text(text)
 
-# preprocess.py
 import docx2txt
 import fitz  # PyMuPDF
 
 def extract_text(file_path):
+    """
+    Extract text from PDF, DOCX, or TXT files
+    """
     if file_path.endswith(".pdf"):
         doc = fitz.open(file_path)
         text = ""
@@ -75,12 +77,17 @@ def extract_text(file_path):
             text += page.get_text()
         return text
     elif file_path.endswith(".docx"):
-        text = docx2txt.process(file_path)
-        return text
+        return docx2txt.process(file_path)
+    elif file_path.endswith(".txt"):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return f.read()
+        except UnicodeDecodeError:
+            with open(file_path, "r", encoding="latin-1") as f:
+                return f.read()
     else:
-        # txt or other formats
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        return ""
+
 
 
 # ---- Mapping & Profile derivation ----
